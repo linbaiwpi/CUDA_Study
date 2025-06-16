@@ -2,3 +2,4 @@ build/**
 my_gemm.egg-info/**
 *.so
 
+**/build/**
