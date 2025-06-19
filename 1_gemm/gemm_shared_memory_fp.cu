@@ -55,99 +55,171 @@ __global__ void gemm_kernel_ref(
     C[cRow * N + cCol] = sum_odd + sum_even;
 }
 
-__global__ void gemm_kernel(
-    const float* A, const float* B, float* C,
-    const int M, const int K, const int N, 
-    const int tileM, const int tileK, const int tileN // iTileW, iTileC, oTileC
+__global__ void gemm_kernel_v0(
+  const float* A, const float* B, float* C,
+  const int M, const int K, const int N, 
+  const int tileM, const int tileK, const int tileN // iTileW, iTileC, oTileC
 ) {
-  
-    int cCol = blockIdx.x;
-    int cRow = blockIdx.y;
-    //指代一个block计算的分块矩阵在C矩阵中所处的位置
 
-    // -------> threadIdx.x
-    // |
-    // |
-    // |
-    // threadIdx.y
+  int cCol = blockIdx.x;
+  int cRow = blockIdx.y;
+  //指代一个block计算的分块矩阵在C矩阵中所处的位置
 
-    extern __shared__ float sm[];
-    float *smA = sm;
-    float *smB = sm + blockDim.y * tileK;
+  // -------> threadIdx.x
+  // |
+  // |
+  // |
+  // threadIdx.y
 
-    float sum;
-    float sum_odd = 0.0;
-    float sum_even = 0.0;
-    constexpr int calcK = 8;
-    float subA[calcK];
-    float subB[calcK];
-    for (int k = 0; k < K; k += tileK) {
+  extern __shared__ float sm[];
+  float *smA = sm;
+  float *smB = sm + blockDim.y * tileK;
 
-        // start position of each thread
-        int aRow = blockDim.y * blockIdx.y + threadIdx.y;
-        int aCol = k * tileK;
-        int bCol = blockDim.x * blockIdx.x + threadIdx.x;
-        int bRow = k * tileK;
-        if (blockIdx.x==0 && blockIdx.y==0) {
-          for (int i = 0; i < calcK; ++i) {
-            if (aRow >= M || aCol + threadIdx.x * calcK + i >= K)
-              continue;
-            smA[threadIdx.y * tileK + threadIdx.x * calcK + i] = A[aRow * K + aCol + threadIdx.x * calcK + i];
-            // printf("(%d, %d) = %f\n", threadIdx.x, threadIdx.y, A[aRow * K + aCol + threadIdx.x * calcK + i]);
-            // printf("(%d, %d) = %f, %f\n", threadIdx.x, threadIdx.y, A[aRow * K + aCol + threadIdx.x * calcK + i], smA[threadIdx.y * tileK + threadIdx.x * calcK]);
-            if (bRow + threadIdx.y * calcK + i >= M || bCol >= K)
-              continue;
-            smB[blockDim.x * (threadIdx.y * calcK + i) + threadIdx.x] = B[(bRow + threadIdx.y * calcK + i) * N + bCol];
-            printf("(%d, %d) = %f, %f\n", threadIdx.x, threadIdx.y, B[(bRow + threadIdx.y * calcK + i) * N + bCol], smB[blockDim.x * (threadIdx.y * calcK + i) + threadIdx.x]);
-          }
-          __syncthreads();
+  float sum;
+  float sum_odd = 0.0;
+  float sum_even = 0.0;
+  constexpr int calcK = 8;
+  float subA[calcK];
+  float subB[calcK];
+  for (int k = 0; k < K; k += tileK) {
 
-          if (threadIdx.x == 0 && threadIdx.y == 0) {
-            printf("================ smA\n");
-            for (int i = 0; i < blockDim.y; ++i) {
-              for (int j = 0; j < tileK; ++j) {
-                printf("%f ", smA[i * tileK + j]);
-              }
-              printf("\n");
-            }
-            printf("\n");
-            printf("================ smB\n");
-            for (int i = 0; i < tileK; ++i) {
-              for (int j = 0; j < blockDim.x; ++j) {
-                printf("%f ", smB[i * blockDim.x + j]);
-              }
-              printf("\n");
-            }
-            printf("\n");
-          }
-          __syncthreads();
+      // start position of each thread
+      int aRow = blockDim.y * blockIdx.y + threadIdx.y;
+      int aCol = k * tileK;
+      int bCol = blockDim.x * blockIdx.x + threadIdx.x;
+      int bRow = k * tileK;
+      if (blockIdx.x==0 && blockIdx.y==0) {
+        for (int i = 0; i < calcK; ++i) {
+          if (aRow >= M || aCol + threadIdx.x * calcK + i >= K)
+            continue;
+          smA[threadIdx.y * tileK + threadIdx.x * calcK + i] = A[aRow * K + aCol + threadIdx.x * calcK + i];
+          // printf("(%d, %d) = %f, %f\n", threadIdx.x, threadIdx.y, A[aRow * K + aCol + threadIdx.x * calcK + i], smA[threadIdx.y * tileK + threadIdx.x * calcK]);
+          if (bRow + threadIdx.y * calcK + i >= M || bCol >= K)
+            continue;
+          smB[blockDim.x * (threadIdx.y * calcK + i) + threadIdx.x] = B[(bRow + threadIdx.y * calcK + i) * N + bCol];
+          // printf("(%d, %d) = %f, %f\n", threadIdx.x, threadIdx.y, B[(bRow + threadIdx.y * calcK + i) * N + bCol], smB[blockDim.x * (threadIdx.y * calcK + i) + threadIdx.x]);
         }
+        __syncthreads();
 
 /*
-        for (int k8 = 0; k8 < tileK; k8 += calcK) {
-            // calculate 8 elements
-            for (int i = 0; i < calcK; ++i) {
-                subA[i] = A[cRow * K + k + k8 + i];
-                subB[i] = B[(k + k8 + i) * N + cCol];
-                if (cRow == 0 && cCol == 0) {
-                  printf("cRow = %d, cCol = %d, subA[%d] = %f, subB[%d] = %f\n", cRow, cCol, i, subA[i], i, subB[i]);
-                }
+        if (threadIdx.x == 0 && threadIdx.y == 0) {
+          printf("================ smA\n");
+          for (int i = 0; i < blockDim.y; ++i) {
+            for (int j = 0; j < tileK; ++j) {
+              printf("%f ", smA[i * tileK + j]);
             }
-            mul_add_8(subA, subB, &sum);
-            if (cRow == 0 && cCol == 0) {
-              printf("sum = %f\n", sum);
+            printf("\n");
+          }
+          printf("\n");
+          printf("================ smB\n");
+          for (int i = 0; i < tileK; ++i) {
+            for (int j = 0; j < blockDim.x; ++j) {
+              printf("%f ", smB[i * blockDim.x + j]);
             }
-            // sum up
-            int k8_idx = k8 % calcK;
-            if (k8_idx % 2 == 0) {
-                sum_even += sum;
-            } else {
-                sum_odd += sum;
-            }
+            printf("\n");
+          }
+          printf("\n");
         }
 */
-    }
-    C[cRow * N + cCol] = sum_odd + sum_even;
+        __syncthreads();
+      }
+
+/*
+      for (int k8 = 0; k8 < tileK; k8 += calcK) {
+          // calculate 8 elements
+          for (int i = 0; i < calcK; ++i) {
+              subA[i] = A[cRow * K + k + k8 + i];
+              subB[i] = B[(k + k8 + i) * N + cCol];
+              if (cRow == 0 && cCol == 0) {
+                printf("cRow = %d, cCol = %d, subA[%d] = %f, subB[%d] = %f\n", cRow, cCol, i, subA[i], i, subB[i]);
+              }
+          }
+          mul_add_8(subA, subB, &sum);
+          if (cRow == 0 && cCol == 0) {
+            printf("sum = %f\n", sum);
+          }
+          // sum up
+          int k8_idx = k8 % calcK;
+          if (k8_idx % 2 == 0) {
+              sum_even += sum;
+          } else {
+              sum_odd += sum;
+          }
+      }
+*/
+  }
+  C[cRow * N + cCol] = sum_odd + sum_even;
+}
+
+__global__ void gemm_kernel_v1(
+  const float* A, const float* B, float* C,
+  const int M, const int K, const int N, 
+  const int tileM, const int tileK, const int tileN // iTileW, iTileC, oTileC
+) {
+
+  int cCol = blockIdx.x;
+  int cRow = blockIdx.y;
+  //指代一个block计算的分块矩阵在C矩阵中所处的位置
+
+  // -------> threadIdx.x
+  // |
+  // |
+  // |
+  // threadIdx.y
+
+  extern __shared__ float sm[];
+  float *smA = sm;
+  float *smB = sm + blockDim.y * tileK;
+
+  float sum;
+  float sum_odd = 0.0;
+  float sum_even = 0.0;
+  constexpr int calcK = 8;
+  float subA[calcK];
+  float subB[calcK];
+  for (int k = 0; k < K; k += tileK) {
+
+      // start position of each thread
+      int aRow = blockDim.y * blockIdx.y + threadIdx.y;
+      int aCol = k * tileK;
+      int bCol = blockDim.x * blockIdx.x + threadIdx.x;
+      int bRow = k * tileK;
+      if (blockIdx.x==0 && blockIdx.y==0) {
+        for (int i = 0; i < calcK; ++i) {
+          if (aRow >= M || aCol + threadIdx.x * calcK + i >= K)
+            continue;
+          smA[threadIdx.y * tileK + threadIdx.x * calcK + i] = A[aRow * K + aCol + threadIdx.x * calcK + i];
+          // printf("(%d, %d) = %f\n", threadIdx.x, threadIdx.y, A[aRow * K + aCol + threadIdx.x * calcK + i]);
+          // printf("(%d, %d) = %f, %f\n", threadIdx.x, threadIdx.y, A[aRow * K + aCol + threadIdx.x * calcK + i], smA[threadIdx.y * tileK + threadIdx.x * calcK]);
+          if (bRow + threadIdx.y * calcK + i >= M || bCol >= K)
+            continue;
+          smB[blockDim.x * (threadIdx.y * calcK + i) + threadIdx.x] = B[(bRow + threadIdx.y * calcK + i) * N + bCol];
+          printf("(%d, %d) = %f, %f\n", threadIdx.x, threadIdx.y, B[(bRow + threadIdx.y * calcK + i) * N + bCol], smB[blockDim.x * (threadIdx.y * calcK + i) + threadIdx.x]);
+        }
+        __syncthreads();
+
+        if (threadIdx.x == 0 && threadIdx.y == 0) {
+          printf("================ smA\n");
+          for (int i = 0; i < blockDim.y; ++i) {
+            for (int j = 0; j < tileK; ++j) {
+              printf("%f ", smA[i * tileK + j]);
+            }
+            printf("\n");
+          }
+          printf("\n");
+          printf("================ smB\n");
+          for (int i = 0; i < tileK; ++i) {
+            for (int j = 0; j < blockDim.x; ++j) {
+              printf("%f ", smB[i * blockDim.x + j]);
+            }
+            printf("\n");
+          }
+          printf("\n");
+        }
+        __syncthreads();
+      }
+  }
+  C[cRow * N + cCol] = sum_odd + sum_even;
 }
 
 #define CEIL_DIV(x, y) (((x) + (y) - 1) / (y))
@@ -208,14 +280,40 @@ int main() {
     // 因此blockDim应该是（tileK * 8, 1024 / （tileK * 8））
     // 此处1024为一个block最多可以计算的thread的总量
     blockDim.x = tileK / 8;
-    constexpr int MAX_THREAD_PER_BLOCK = 512; // TODO fit into shared memory
+    constexpr int MAX_THREAD_PER_BLOCK = 1024; // TODO fit into shared memory
     blockDim.y = tileK / 8; // MAX_THREAD_PER_BLOCK / blockDim.x;
     // gridDim的计算跟普通分块矩阵乘法一致
     gridDim.x = CEIL_DIV(M, blockDim.x);
     gridDim.y = CEIL_DIV(N, blockDim.y);
     size_t sharedMemSize = (blockDim.x + blockDim.y) * tileK * sizeof(float);
     printf("blockDim = (%d, %d), gridDim = (%d, %d), sharedMemSize = %d\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y, sharedMemSize);
-    gemm_kernel<<<gridDim, blockDim, sharedMemSize>>>(d_A, d_B, d_C, M, K, N, tileM, tileK, tileN);
+    gemm_kernel_v0<<<gridDim, blockDim, sharedMemSize>>>(d_A, d_B, d_C, M, K, N, tileM, tileK, tileN);
+    cudaMemcpy(C, d_C, sizeof(float) * M * N, cudaMemcpyDeviceToHost);
+    printf("C[0] : %f\n", C[0]);
+
+
+    // -----------------------------------------------------------------------------
+    // assumption：矩阵A和B都是row-raster的形式存储
+    // 由于v0版本的blockDim.x和blockDim.y的被tileK的大小限制
+    // 比如当一个tileK=32, 则blockDim.x和blockDim.y的数值都只能为32/8
+    // 考虑到一个block最多可以支持1024个thread,利用率仅仅4x4/1024=1.5625%
+    // 如果一个block可以处理多个tile的话，就可以提高block的利用率
+    // 则(tileK / 8 * N) ^ 2 = 1024 -> N = 8
+    // 此外，thread的数量同时会被shared memory的大小所限制(48KB)
+    // share memory所需大小为(blockDim.x + blockDim.y) * tileK
+    // -> tileK / 8 * N * 2 * tileK * sizeof_dtype <= 48K
+    // -> N < 48
+    // constexpr int MAX_THREAD_PER_BLOCK = 512; // TODO fit into shared memory
+    int tile_num = 8; // TODO caculate N automatically
+
+    blockDim.x = tileK / 8 * tile_num;
+    blockDim.y = tileK / 8 * tile_num; // MAX_THREAD_PER_BLOCK / blockDim.x;
+    // gridDim的计算跟普通分块矩阵乘法一致
+    gridDim.x = CEIL_DIV(M, blockDim.x * 8);
+    gridDim.y = CEIL_DIV(N, blockDim.y * 8);
+    sharedMemSize = (blockDim.x + blockDim.y) * tileK * sizeof(float);
+    printf("blockDim = (%d, %d), gridDim = (%d, %d), sharedMemSize = %d\n", blockDim.x, blockDim.y, gridDim.x, gridDim.y, sharedMemSize);
+    gemm_kernel_v1<<<gridDim, blockDim, sharedMemSize>>>(d_A, d_B, d_C, M, K, N, tileM, tileK, tileN);
     cudaMemcpy(C, d_C, sizeof(float) * M * N, cudaMemcpyDeviceToHost);
     printf("C[0] : %f\n", C[0]);
 
