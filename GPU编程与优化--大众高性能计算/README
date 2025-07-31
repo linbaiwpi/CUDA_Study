@@ -1,0 +1,7 @@
+# Code of Chapter 6 向量加法
+## How to use
+```bash
+cmake ..
+make
+./cuda_ch6 {6.1 | 6.2 | 6.3 | 6.4 | cublas} //
+```
