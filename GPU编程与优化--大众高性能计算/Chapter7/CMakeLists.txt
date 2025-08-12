@@ -9,13 +9,14 @@ set(CMAKE_CUDA_STANDARD 14)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # 源文件
-set(SOURCES
-    main.cu
-    ch7.1.cu
-    ch7.2.cu
-#    ch7.3.cu
-#    ch7.4.cu
-)
+# set(SOURCES
+#     main.cu
+#     ch7.1.cu
+#     ch7.2.cu
+#     ch7.3.cu
+# #    ch7.4.cu
+# )
+file(GLOB SOURCES "*.cu")
 
 # 创建可执行文件
 add_executable(cuda_ch7 ${SOURCES})

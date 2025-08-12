@@ -70,10 +70,13 @@ int main(int argc, char** argv) {
         vector_dot_product_gpu_1<<<1,thereadnum>>>(d_a, d_b, d_c, N);
     } else if (strcmp(argv[1], "7.2") == 0) {
         vector_dot_product_gpu_2<<<1,thereadnum>>>(d_a, d_b, d_c, N);
-    // } else if (strcmp(argv[1], "6.4") == 0) {
-    //     int blocknum = 10;
-    //     int threadnum = 10;
-    //     vector_add_gpu_3<<<blocknum, threadnum>>>(d_a, d_b, d_c, N);
+    } else if (strcmp(argv[1], "7.3") == 0) {
+        int blocknum = 10;
+        int threadnum = 128;
+        DATATYPE c_tmp[blocknum];
+        vector_dot_product_gpu_3<<<blocknum, threadnum>>>(d_a, d_b, d_c, N);
+        cudaMemcpy(c_tmp, d_c, sizeof(DATATYPE)*blocknum, cudaMemcpyDeviceToHost);
+        c[0] = vector_dot_product_cpu_3(c_tmp, blocknum);
     // } else if (strcmp(argv[1], "cublas") == 0) {
     //     std::cout << "Calling cublas" << std::endl;
     //     cublasSaxpy_v2(handle, N, &alpha, d_a, 1, d_b, 1);
@@ -84,7 +87,10 @@ int main(int argc, char** argv) {
     // result copy back to CPU
     if (strcmp(argv[1], "cublas") == 0) {
         cublasGetVector(N, sizeof(DATATYPE), d_b, 1, c, 1);
-    } else {
+    } if (strcmp(argv[1], "7.3") == 0) {
+        ;
+    }
+    else {
         cudaMemcpy(c, d_c, sizeof(DATATYPE) * N, cudaMemcpyDeviceToHost);
     }
 
